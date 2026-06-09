@@ -37,4 +37,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # The @astrojs/cloudflare v13 adapter emits a wrangler v4 config, so
+          # the action must use wrangler 4 (its default v3 rejects v4 fields).
+          wranglerVersion: "4"
           command: deploy --config dist/server/wrangler.json
