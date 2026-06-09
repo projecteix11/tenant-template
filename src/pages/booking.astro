@@ -1,0 +1,210 @@
+---
+import { getSlugFromHostname, fetchTenant, API_URL } from '../lib/tenant'
+
+const hostname = Astro.request.headers.get('x-forwarded-host') ?? Astro.request.headers.get('host') ?? ''
+const slug = getSlugFromHostname(hostname)
+
+if (!slug) return Astro.redirect('https://gobbly.app')
+
+const tenant = await fetchTenant(slug)
+if (!tenant) return new Response(null, { status: 404 })
+
+if (!tenant.features?.reservations) return new Response(null, { status: 404 })
+
+const primary = tenant.branding?.primaryColor ?? '#f97316'
+
+type FormState = { success: boolean; error: string | null }
+let state: FormState = { success: false, error: null }
+
+if (Astro.request.method === 'POST') {
+  const data = await Astro.request.formData()
+  const body = {
+    name:       data.get('name'),
+    email:      data.get('email'),
+    phone:      data.get('phone') || null,
+    date:       data.get('date'),
+    time:       data.get('time'),
+    party_size: Number(data.get('party_size')),
+    notes:      data.get('notes') || null,
+  }
+  try {
+    const res = await fetch(`${API_URL}/reservations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Tenant-Slug': tenant.slug,
+      },
+      body: JSON.stringify(body),
+    })
+    if (res.ok) {
+      state = { success: true, error: null }
+    } else {
+      const json = await res.json() as { error: string | null }
+      state = { success: false, error: json.error ?? 'Error al enviar la reserva.' }
+    }
+  } catch {
+    state = { success: false, error: 'No se pudo conectar. Inténtalo de nuevo.' }
+  }
+}
+
+// Earliest bookable date = tomorrow
+const today = new Date()
+today.setDate(today.getDate() + 1)
+const minDate = today.toISOString().split('T')[0]
+---
+
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content={`Reserva en ${tenant.name}`} />
+  <title>Reservas · {tenant.name}</title>
+  <style define:vars={{ primary }}>
+    * { box-sizing: border-box; margin: 0; padding: 0 }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #fafaf9; color: #1c1917; padding-bottom: 3rem }
+
+    header {
+      position: sticky; top: 0; z-index: 50;
+      background: #fff; border-bottom: 1px solid #e7e5e4;
+      padding: .875rem 1.25rem;
+      display: flex; align-items: center; gap: 1rem;
+    }
+    .back {
+      display: flex; align-items: center; gap: .375rem;
+      color: var(--primary); text-decoration: none; font-size: .9rem; font-weight: 500;
+      flex-shrink: 0;
+    }
+    .back:hover { opacity: .75 }
+    header h1 { font-size: 1.1rem; font-weight: 700; flex: 1; text-align: center }
+    .header-spacer { width: 60px; flex-shrink: 0 }
+
+    .container { max-width: 520px; margin: 0 auto; padding: 2rem 1.25rem 0 }
+
+    .card {
+      background: #fff; border-radius: 1rem;
+      padding: 1.75rem; box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+    .card h2 { font-size: 1.2rem; font-weight: 700; margin-bottom: 1.5rem }
+
+    .field { display: flex; flex-direction: column; gap: .4rem; margin-bottom: 1rem }
+    label { font-size: .875rem; font-weight: 600; color: #44403c }
+    input, select, textarea {
+      width: 100%; padding: .625rem .875rem;
+      border: 1.5px solid #e7e5e4; border-radius: .5rem;
+      font-size: .95rem; font-family: inherit; color: #1c1917;
+      background: #fff; transition: border-color .15s;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--primary) }
+    textarea { resize: vertical; min-height: 80px }
+
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem }
+
+    .btn {
+      display: block; width: 100%; margin-top: 1.5rem;
+      background: var(--primary); color: #fff;
+      border: none; border-radius: .75rem;
+      padding: .875rem; font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: opacity .15s;
+    }
+    .btn:hover { opacity: .88 }
+    .btn:disabled { opacity: .55; cursor: not-allowed }
+
+    .alert {
+      padding: .875rem 1rem; border-radius: .625rem;
+      font-size: .9rem; margin-bottom: 1.25rem;
+    }
+    .alert-error { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca }
+    .alert-success { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0 }
+
+    .success-card { text-align: center; padding: 2.5rem 1.25rem }
+    .success-icon { font-size: 3rem; margin-bottom: 1rem }
+    .success-card h2 { font-size: 1.35rem; font-weight: 700; margin-bottom: .5rem }
+    .success-card p { color: #78716c; font-size: .95rem; line-height: 1.5 }
+    .success-card a {
+      display: inline-block; margin-top: 1.5rem;
+      color: var(--primary); font-weight: 600; text-decoration: none;
+    }
+    .success-card a:hover { text-decoration: underline }
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="back" href="/">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    Inicio
+  </a>
+  <h1>{tenant.name}</h1>
+  <div class="header-spacer" />
+</header>
+
+<div class="container">
+  {state.success ? (
+    <div class="card success-card">
+      <div class="success-icon">✅</div>
+      <h2>¡Reserva recibida!</h2>
+      <p>Te confirmamos tu reserva en <strong>{tenant.name}</strong> en cuanto podamos. Recibirás un email de confirmación.</p>
+      <a href="/">Volver al inicio</a>
+    </div>
+  ) : (
+    <div class="card">
+      <h2>Reservar mesa</h2>
+
+      {state.error && (
+        <div class="alert alert-error">{state.error}</div>
+      )}
+
+      <form method="POST">
+        <div class="field">
+          <label for="name">Nombre completo *</label>
+          <input id="name" name="name" type="text" required placeholder="Tu nombre" />
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="email">Email *</label>
+            <input id="email" name="email" type="email" required placeholder="tu@email.com" />
+          </div>
+          <div class="field">
+            <label for="phone">Teléfono</label>
+            <input id="phone" name="phone" type="tel" placeholder="+34 600 000 000" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="date">Fecha *</label>
+            <input id="date" name="date" type="date" required min={minDate} />
+          </div>
+          <div class="field">
+            <label for="time">Hora *</label>
+            <input id="time" name="time" type="time" required min="12:00" max="23:00" step="1800" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="party_size">Número de personas *</label>
+          <select id="party_size" name="party_size" required>
+            {Array.from({ length: 20 }, (_, i) => i + 1).map(n => (
+              <option value={n}>{n} {n === 1 ? 'persona' : 'personas'}</option>
+            ))}
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="notes">Notas adicionales</label>
+          <textarea id="notes" name="notes" placeholder="Alergias, silla para bebé, ocasión especial…" />
+        </div>
+
+        <button class="btn" type="submit">Solicitar reserva</button>
+      </form>
+    </div>
+  )}
+</div>
+
+<footer style="text-align:center;margin-top:2.5rem;font-size:.8rem;color:#d6d3d1">Powered by Gobbly</footer>
+
+</body>
+</html>

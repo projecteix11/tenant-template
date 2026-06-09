@@ -1,0 +1,36 @@
+/**
+ * Cloudflare Worker config for the Astro SSR tenant-site.
+ *
+ * IMPORTANT: This project is deployed as a Cloudflare Worker (NOT Cloudflare Pages).
+ * The @astrojs/cloudflare v13 adapter is designed for Workers + Static Assets,
+ * not for Pages. Build output:
+ *   dist/server/entry.mjs   ← worker entry
+ *   dist/client/            ← static assets (served via the ASSETS binding)
+ *
+ * How deploy works:
+ *   1. `astro build` runs the @astrojs/cloudflare adapter, which reads this file
+ *      AND writes a fully-resolved config to `dist/server/wrangler.json`.
+ *   2. `wrangler deploy --config dist/server/wrangler.json` deploys using that
+ *      generated config (it has the correct relative `main` and merged bindings).
+ *
+ * One-shot command:  pnpm run deploy
+ *
+ * The KV namespace `SESSION` is required by the adapter (Astro sessions default
+ * to the cloudflareKVBinding driver). The id below was created with:
+ *   wrangler kv namespace create tenant_site_sessions
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tenant-site",
+  "compatibility_date": "2025-04-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "kv_namespaces": [
+    {
+      "binding": "SESSION",
+      "id": "4538edb4a5ba47be85fde0d9d7aeef78"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

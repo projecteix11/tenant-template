@@ -1,0 +1,177 @@
+---
+import { getSlugFromHostname, fetchTenant } from '../lib/tenant'
+
+const hostname = Astro.request.headers.get('x-forwarded-host') ?? Astro.request.headers.get('host') ?? ''
+const slug = getSlugFromHostname(hostname)
+
+if (!slug) {
+  return Astro.redirect('https://gobbly.app')
+}
+
+const tenant = await fetchTenant(slug)
+
+if (!tenant) {
+  return new Response(null, { status: 404 })
+}
+
+const b = tenant.branding ?? {}
+const f = tenant.features ?? {}
+
+const primary     = b.primaryColor ?? '#f97316'
+const hasCover    = !!b.coverImage
+const hasContact  = !!(b.address || b.phone || b.email)
+const socialLinks = Object.entries(b.socialLinks ?? {}).filter(([, v]) => v) as [string, string][]
+---
+
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content={b.tagline ?? tenant.name} />
+  <title>{tenant.name}</title>
+  <style define:vars={{ primary }}>
+    * { box-sizing: border-box; margin: 0; padding: 0 }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #fafaf9; color: #1c1917 }
+
+    /* ── Hero ── */
+    .hero {
+      position: relative;
+      min-height: 60svh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; padding: 3rem 1.5rem;
+    }
+    .hero.plain { background: var(--primary) }
+    .hero-bg {
+      position: absolute; inset: 0;
+      background-size: cover; background-position: center;
+      z-index: 0;
+    }
+    .hero-overlay {
+      position: absolute; inset: 0;
+      background: linear-gradient(to bottom, rgba(0,0,0,.45), rgba(0,0,0,.62));
+      z-index: 1;
+    }
+    .hero-content {
+      position: relative; z-index: 2;
+      display: flex; flex-direction: column; align-items: center; gap: 1rem;
+    }
+    .logo { max-width: 140px; max-height: 70px; object-fit: contain }
+    h1 {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 800; color: #fff; line-height: 1.1;
+      text-shadow: 0 2px 12px rgba(0,0,0,.3);
+    }
+    .tagline {
+      font-size: 1.1rem; color: rgba(255,255,255,.88);
+      max-width: 480px; line-height: 1.5;
+      text-shadow: 0 1px 4px rgba(0,0,0,.3);
+    }
+
+    /* ── CTAs ── */
+    .ctas { display: flex; gap: .75rem; flex-wrap: wrap; justify-content: center; margin-top: .5rem }
+    .btn-primary {
+      display: inline-block; background: var(--primary); color: #fff;
+      text-decoration: none; padding: .875rem 2rem;
+      border-radius: .75rem; font-weight: 700; font-size: 1rem;
+      transition: opacity .15s;
+    }
+    .btn-primary:hover { opacity: .88 }
+    .btn-outline {
+      display: inline-block; background: transparent; color: #fff;
+      text-decoration: none; padding: .875rem 2rem;
+      border-radius: .75rem; font-weight: 700; font-size: 1rem;
+      border: 2px solid rgba(255,255,255,.8);
+      transition: background .15s, color .15s;
+    }
+    .btn-outline:hover { background: #fff; color: #1c1917 }
+
+    /* ── Social ── */
+    .social { display: flex; gap: .75rem; margin-top: .25rem }
+    .social-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px; border-radius: 50%;
+      background: rgba(255,255,255,.15); color: #fff;
+      transition: background .15s; text-decoration: none;
+    }
+    .social-btn:hover { background: rgba(255,255,255,.3) }
+
+    /* ── Contact ── */
+    .contact { max-width: 640px; margin: 0 auto; padding: 3rem 1.5rem; display: flex; flex-direction: column; gap: 1.25rem }
+    .contact h2 { font-size: 1.25rem; font-weight: 700 }
+    .contact-grid { display: grid; gap: .75rem }
+    .contact-item { display: flex; align-items: flex-start; gap: .75rem; color: #44403c; font-size: .95rem; line-height: 1.4 }
+    .contact-item svg { flex-shrink: 0; margin-top: 2px; color: var(--primary) }
+    .contact-item a { color: inherit; text-decoration: none }
+    .contact-item a:hover { text-decoration: underline }
+
+    /* ── Footer ── */
+    footer { text-align: center; padding: 1.5rem; font-size: .8rem; color: #a8a29e; border-top: 1px solid #e7e5e4 }
+  </style>
+</head>
+<body>
+
+<section class={`hero ${hasCover ? '' : 'plain'}`}>
+  {hasCover && <div class="hero-bg" style={`background-image:url('${b.coverImage}')`} />}
+  {hasCover && <div class="hero-overlay" />}
+
+  <div class="hero-content">
+    {b.logo && <img class="logo" src={b.logo} alt={`${tenant.name} logo`} />}
+    <h1>{tenant.name}</h1>
+    {b.tagline && <p class="tagline">{b.tagline}</p>}
+
+    <div class="ctas">
+      <a class="btn-primary" href="/menu">Ver menú</a>
+      {f.reservations && <a class="btn-outline" href="/booking">Reservar mesa</a>}
+    </div>
+
+    {socialLinks.length > 0 && (
+      <div class="social">
+        {socialLinks.map(([network, url]) => (
+          <a class="social-btn" href={url} target="_blank" rel="noopener" aria-label={network}>
+            {network === 'instagram' && (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+            )}
+            {network === 'facebook' && (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+            )}
+            {network === 'tripadvisor' && (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm0 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10zm-1-7h2v2h-2zm0-10h2v8h-2z"/></svg>
+            )}
+          </a>
+        ))}
+      </div>
+    )}
+  </div>
+</section>
+
+{hasContact && (
+  <section class="contact">
+    <h2>Contacto</h2>
+    <div class="contact-grid">
+      {b.address && (
+        <div class="contact-item">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span>{b.address}</span>
+        </div>
+      )}
+      {b.phone && (
+        <div class="contact-item">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 1h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.91 8.98a16 16 0 006.29 6.29l1.28-1.28a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+          <a href={`tel:${b.phone}`}>{b.phone}</a>
+        </div>
+      )}
+      {b.email && (
+        <div class="contact-item">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,12 2,6"/></svg>
+          <a href={`mailto:${b.email}`}>{b.email}</a>
+        </div>
+      )}
+    </div>
+  </section>
+)}
+
+<footer>Powered by Gobbly</footer>
+</body>
+</html>

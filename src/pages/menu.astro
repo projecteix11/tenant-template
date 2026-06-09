@@ -1,0 +1,195 @@
+---
+import { getSlugFromHostname, fetchTenant, fetchFromApi } from '../lib/tenant'
+import type { Category, Dish } from '../lib/tenant'
+
+const hostname = Astro.request.headers.get('x-forwarded-host') ?? Astro.request.headers.get('host') ?? ''
+const slug = getSlugFromHostname(hostname)
+
+if (!slug) return Astro.redirect('https://gobbly.app')
+
+const tenant = await fetchTenant(slug)
+if (!tenant) return new Response(null, { status: 404 })
+
+const [categories, dishes] = await Promise.all([
+  fetchFromApi<Category[]>('/categories', tenant.slug),
+  fetchFromApi<Dish[]>('/dishes', tenant.slug),
+])
+
+const primary = tenant.branding?.primaryColor ?? '#f97316'
+
+// Group and sort dishes by category
+const sortedCats = (categories ?? []).sort((a, b) => a.sort_order - b.sort_order)
+const dishesByCategory = new Map<string, Dish[]>()
+for (const dish of dishes ?? []) {
+  if (!dish.category_id) continue
+  if (!dishesByCategory.has(dish.category_id)) dishesByCategory.set(dish.category_id, [])
+  dishesByCategory.get(dish.category_id)!.push(dish)
+}
+const activeCats = sortedCats.filter(c => dishesByCategory.has(c.id))
+---
+
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content={`Carta de ${tenant.name}`} />
+  <title>Carta · {tenant.name}</title>
+  <style define:vars={{ primary }}>
+    * { box-sizing: border-box; margin: 0; padding: 0 }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #fafaf9; color: #1c1917; padding-bottom: 3rem }
+
+    /* ── Header ── */
+    header {
+      position: sticky; top: 0; z-index: 50;
+      background: #fff; border-bottom: 1px solid #e7e5e4;
+      padding: .875rem 1.25rem;
+      display: flex; align-items: center; gap: 1rem;
+    }
+    .back {
+      display: flex; align-items: center; gap: .375rem;
+      color: var(--primary); text-decoration: none; font-size: .9rem; font-weight: 500;
+      flex-shrink: 0;
+    }
+    .back:hover { opacity: .75 }
+    header h1 { font-size: 1.1rem; font-weight: 700; flex: 1; text-align: center }
+    .header-spacer { width: 60px; flex-shrink: 0 }
+
+    /* ── Category nav ── */
+    .cat-nav {
+      position: sticky; top: 57px; z-index: 40;
+      background: #fff; border-bottom: 1px solid #e7e5e4;
+      display: flex; gap: .5rem; overflow-x: auto; padding: .75rem 1.25rem;
+      scrollbar-width: none;
+    }
+    .cat-nav::-webkit-scrollbar { display: none }
+    .cat-pill {
+      display: inline-block; white-space: nowrap;
+      padding: .375rem .875rem; border-radius: 999px;
+      font-size: .85rem; font-weight: 500;
+      background: #f5f5f4; color: #57534e;
+      text-decoration: none; transition: background .15s, color .15s;
+      flex-shrink: 0;
+    }
+    .cat-pill:hover { background: var(--primary); color: #fff }
+
+    /* ── Sections ── */
+    .menu-section { padding: 1.75rem 1.25rem 0 }
+    .menu-section h2 {
+      font-size: 1.15rem; font-weight: 700;
+      color: var(--primary); margin-bottom: 1rem;
+      padding-bottom: .5rem; border-bottom: 2px solid var(--primary);
+    }
+    .dish-list { display: flex; flex-direction: column; gap: .75rem }
+
+    /* ── Dish card ── */
+    .dish-card {
+      display: flex; gap: 1rem; align-items: flex-start;
+      background: #fff; border-radius: .75rem;
+      padding: .875rem; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .dish-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .3rem }
+    .dish-name { font-size: 1rem; font-weight: 600; line-height: 1.3 }
+    .dish-desc { font-size: .85rem; color: #78716c; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden }
+    .dish-footer { display: flex; align-items: center; gap: .75rem; margin-top: .2rem; flex-wrap: wrap }
+    .dish-price { font-size: 1rem; font-weight: 700; color: #1c1917 }
+    .dish-unavailable { font-size: .75rem; color: #a8a29e; font-style: italic }
+    .allergens { display: flex; gap: .3rem; flex-wrap: wrap }
+    .allergen-tag {
+      font-size: .7rem; background: #f5f5f4; color: #78716c;
+      padding: .15rem .45rem; border-radius: 4px;
+    }
+    .dish-img {
+      width: 88px; height: 88px; flex-shrink: 0;
+      border-radius: .5rem; object-fit: cover;
+    }
+    .dish-img-placeholder {
+      width: 88px; height: 88px; flex-shrink: 0;
+      border-radius: .5rem; background: #f5f5f4;
+      display: flex; align-items: center; justify-content: center;
+      color: #d6d3d1; font-size: 1.5rem;
+    }
+    .featured-badge {
+      display: inline-block; font-size: .65rem; font-weight: 700;
+      background: var(--primary); color: #fff;
+      padding: .1rem .4rem; border-radius: 4px; text-transform: uppercase;
+    }
+
+    /* ── Empty state ── */
+    .empty { text-align: center; padding: 3rem 1.25rem; color: #a8a29e; font-size: .95rem }
+
+    /* ── Footer ── */
+    footer { text-align: center; margin-top: 2.5rem; font-size: .8rem; color: #d6d3d1 }
+
+    @media (min-width: 640px) {
+      .dish-list { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem }
+      .menu-section { padding: 2rem 2rem 0 }
+      header { padding: 1rem 2rem }
+      .cat-nav { padding: .75rem 2rem }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="back" href="/">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    Inicio
+  </a>
+  <h1>{tenant.name}</h1>
+  <div class="header-spacer" />
+</header>
+
+{activeCats.length > 1 && (
+  <nav class="cat-nav">
+    {activeCats.map(cat => (
+      <a class="cat-pill" href={`#cat-${cat.id}`}>{cat.name}</a>
+    ))}
+  </nav>
+)}
+
+{activeCats.length === 0 && (
+  <p class="empty">La carta no está disponible en este momento.</p>
+)}
+
+{activeCats.map(cat => {
+  const catDishes = dishesByCategory.get(cat.id) ?? []
+  return (
+    <section class="menu-section" id={`cat-${cat.id}`}>
+      <h2>{cat.name}</h2>
+      <div class="dish-list">
+        {catDishes.map(dish => (
+          <article class="dish-card">
+            <div class="dish-info">
+              <span class="dish-name">
+                {dish.is_featured && <span class="featured-badge">★ Destacado</span>}{' '}
+                {dish.name}
+              </span>
+              {dish.description && <p class="dish-desc">{dish.description}</p>}
+              <div class="dish-footer">
+                <span class="dish-price">{dish.price.toFixed(2)} €</span>
+                {!dish.is_available && <span class="dish-unavailable">No disponible</span>}
+                {dish.allergens.length > 0 && (
+                  <div class="allergens">
+                    {dish.allergens.map(a => (
+                      <span class="allergen-tag">{a.icon ? `${a.icon} ` : ''}{a.name}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            {dish.image
+              ? <img class="dish-img" src={dish.image} alt={dish.name} loading="lazy" />
+              : <div class="dish-img-placeholder">🍽</div>
+            }
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+})}
+
+<footer>Powered by Gobbly</footer>
+
+</body>
+</html>
