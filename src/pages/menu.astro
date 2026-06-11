@@ -2,8 +2,9 @@
 import { getSlugFromHostname, fetchTenant, fetchFromApi } from '../lib/tenant'
 import type { Category, Dish } from '../lib/tenant'
 
-const hostname = Astro.request.headers.get('x-forwarded-host') ?? Astro.request.headers.get('host') ?? ''
-const slug = getSlugFromHostname(hostname)
+// Astro.url.hostname comes from the Host header Cloudflare sets; never trust
+// x-forwarded-host — it passes through from the client (cross-tenant spoofing).
+const slug = getSlugFromHostname(Astro.url.hostname)
 
 if (!slug) return Astro.redirect('https://gobbly.app')
 
